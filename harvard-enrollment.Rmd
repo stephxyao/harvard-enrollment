@@ -1,0 +1,89 @@
+---
+title: "Harvard Spring Course Enrollment Graphic"
+author: "Stephanie Yao"
+date: "April 9, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(janitor)
+library(ggrepel)
+library(ggthemes)
+library(ggplot2)
+```
+
+```{r create_graphic, echo=FALSE, warning=FALSE, message=FALSE}
+# read in enrollment data from spring 2019 and store into variable "spring2019"
+
+spring2019 <- read_excel("class_enrollment_summary_by_term_3.22.19.xlsx", skip = 3) %>%
+  # clean column names using janitor function
+  
+  clean_names() %>% 
+  # select relevant columns
+  
+  select("course_id", "u_grad", "grad", "total")
+
+# do the same thing as above for spring 2018 data
+spring2018 <- read_excel("class_enrollment_summary_by_term_03.06.18.xlsx", skip = 3) %>%
+  clean_names() %>% 
+  select("course_id", "u_grad", "grad", "total")
+
+# join the two data sets using inner_join so only courses that were offered both years will remain
+# use suffix ".19" and ".18" to distinguish between columns from different years
+
+joined <- inner_join(spring2019, spring2018, by = c("course_id"), suffix = c(".19", ".18")) %>% 
+  # create a column called "flipped" that will have value "no" if the total enrollment size was the same
+  # for both 2018 and 2019. otherwise, the course will have experienced "flipping" and will have value "yes"
+  
+  mutate(flipped = ifelse(total.19 == total.18, "no", "yes")) %>% 
+  # create a column called "winning_year" that will have the year, 18 or 19, the course "flipped" to
+  # in other words it will have the year with more students enrolled in the course
+  
+  mutate(winning_year = ifelse(total.19 > total.18, "19", "18"))
+
+# Here I store the hex codes for the colors I want to use for each year into a vector called flipping_colors
+
+flipping_colors <- c("#FF7256","#6495ED")
+
+# for my first layer o the plot, I create a ggplot that only plots the "unflipped" courses, which are courses
+# with flipped == "no." I plot the total enrollment of the course for 2019 on the x-axis, and I plot the 
+# percentage of undergraduates making up the course, also for 2019, on the y-axis
+
+p0 <- ggplot(data = subset(joined, flipped == "no"),
+             mapping = aes(x = total.19,
+                           y = (u_grad.19/total.19)))
+
+# this uses geom_point to color the unflipped courses black, on top of the first layer created above.
+# it also sets the x-axis on a log scale, so it is easier to see the pattern as total enrollments increases
+
+p1 <- p0 + geom_point(color = "black") +
+ scale_x_log10(labels=scales::comma)
+
+# this adds another layer of the data where flipped == "yes", which plots the points where the course
+# experienced flipping. it plots the same values on the x and y axes. the color of the points is set to the 
+# variable "winning_year" that I created earlier. Then, I use scale_color_manual to manually color the points
+# depending on which year they flipped to, using the flipping_colors vector that I created earlier.
+
+p2 <- p1 + geom_point(data = subset(joined, flipped == "yes"),
+                      mapping = aes(x = total.19, y = (u_grad.19/total.19),
+                                    color = winning_year)) +
+  scale_color_manual(values = flipping_colors)
+
+# the second to last layer of the plot adds all the necessary labels and formats the y-axis as percentages.
+
+p3 <- p2 + scale_y_continuous(labels=scales::percent) +
+  labs(color = "Year with greater enrollment",
+       x = "Total Enrollment (log scale)",
+       y = "Percent Undergraduate",
+       title = "Increasing/Decreasing Harvard Spring Course Sizes for 2019 vs. 2018",
+       caption = "Each dot represents a course offered. Courses in black did not change class size.")
+
+# The final layer of the plot sets the theme using a theme from ggtheme and positions the legend at the top. 
+
+p3 + theme_tufte() +
+  theme(legend.position="top")
+
+```
